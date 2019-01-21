@@ -6,6 +6,13 @@ import click
 import numpy as np
 import matplotlib.pyplot as plt
 
+# I'm much obliged to user6038351 on stackoverflow for providing framework for much of this code
+# (see post here: https://stackoverflow.com/questions/43521804/recording-audio-with-pyaudio-on-a-button-click-and-stop-recording-on-another-but/51229082#51229082)
+#
+# I'm also much obliged to Dr. Eric Bruning for his insights and code on how to use fft, display audio,
+# and answering my general geeky Python questions. See his code here:
+# https://gist.github.com/deeplycloudy/2152643
+
 
 class RecAUD:
 
@@ -25,6 +32,10 @@ class RecAUD:
 
         # Call the main method to initate the loop:
         self.main()
+
+    def dB(self,a,base=1.0):
+        return 10.0*np.log10(a/base)
+
 
     def main(self,):
         # Start the mainloop, which will be indefinite until 'q' is pressed.
@@ -97,7 +108,38 @@ class RecAUD:
         dtype = 'int{0}'.format(bits_per_sample)
         audio = np.fromstring(wf.readframes(int(duration*self.RATE*bytes_per_sample/self.CHANNELS)), dtype=dtype)
         #print(audio)
-        plt.plot(audio)
+        #plt.plot(np.arange(frames)/self.RATE,audio)
+        fs = self.RATE
+        audio_fft = np.fft.fft(audio)
+        freqs = np.fft.fftfreq(audio.shape[0], 1.0/fs) / 1000.0
+        max_freq_kHz = freqs.max()
+        times = np.arange(audio.shape[0]) / float(fs)
+        fftshift = np.fft.fftshift
+
+        import matplotlib.pyplot as plt
+        fig = plt.figure(figsize=(8.5,11))
+        ax_spec_gram = fig.add_subplot(312)
+        ax_fft  = fig.add_subplot(313)
+        ax_time = fig.add_subplot(311)
+        plt.gcf().subplots_adjust(bottom=0.15)
+
+        ax_spec_gram.specgram(audio, Fs=fs, cmap = 'jet')#cmap='gist_heat')
+        ax_spec_gram.set_xlim(0,duration)
+        ax_spec_gram.set_ylim(0,max_freq_kHz*1000.0)
+        ax_spec_gram.set_ylabel('Frequency (Hz)')
+        ax_spec_gram.set_xlabel('Time (s)')
+
+        ax_fft.plot(fftshift(freqs), fftshift(self.dB(audio_fft)))
+        ax_fft.set_xlim(0,max_freq_kHz)
+        ax_fft.set_xlabel('Frequency (kHz)')
+        ax_fft.set_ylabel('dB')
+
+        ax_time.plot(np.arange(frames)/self.RATE,audio/audio.max())
+        ax_time.set_xlabel('Time (s)')
+        ax_time.set_ylabel('Relative amplitude')
+        ax_time.set_xlim(0,duration)
+
+        plt.tight_layout()
         plt.show()
 
 
