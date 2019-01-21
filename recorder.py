@@ -3,6 +3,8 @@ import pyaudio
 import wave
 import os
 import click
+import numpy as np
+import matplotlib.pyplot as plt
 
 
 class RecAUD:
@@ -42,6 +44,10 @@ class RecAUD:
                 print('* replaying clip')
                 self.replay()
 
+            if key =='d':
+                print('* displaying..\n\n')
+                self.display()
+
 
     def start_record(self):
         self.st = 1
@@ -80,6 +86,21 @@ class RecAUD:
         stream_play.stop_stream()
         stream_play.close()
         play.terminate()
+
+    def display(self):
+        wf = wave.open(self.filename, 'rb')
+        frames = wf.getnframes()
+        #rate = wf.getframerate()
+        duration = frames / float(self.RATE)
+        bytes_per_sample = wf.getsampwidth()
+        bits_per_sample  = bytes_per_sample * 8
+        dtype = 'int{0}'.format(bits_per_sample)
+        audio = np.fromstring(wf.readframes(int(duration*self.RATE*bytes_per_sample/self.CHANNELS)), dtype=dtype)
+        #print(audio)
+        plt.plot(audio)
+        plt.show()
+
+
 
 
 # Create an object of the ProgramGUI class to begin the program.

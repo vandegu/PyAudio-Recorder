@@ -1,0 +1,7 @@
+If you are using a Mac, be sure that your backend is set up to handle matplotlib.
+
+To do this, first install all of the required packages, including matplotlib.
+
+Then, edit /.matplotlib/matplotlibrc (yours might be empty) so that it contains the following line:
+
+backend: TkAgg
