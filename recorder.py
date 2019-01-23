@@ -5,6 +5,7 @@ import os
 import click
 import numpy as np
 import matplotlib.pyplot as plt
+#from scipy.signal import butter, lfilter, freqz
 
 # I'm much obliged to user6038351 on stackoverflow for providing framework for much of this code
 # (see post here: https://stackoverflow.com/questions/43521804/recording-audio-with-pyaudio-on-a-button-click-and-stop-recording-on-another-but/51229082#51229082)
@@ -41,6 +42,18 @@ class RecAUD:
         # Start the mainloop, which will be indefinite until 'q' is pressed.
         mainloop = True
         while mainloop:
+
+            print('''
+
+                Press a key to perform that operation...
+                r : record audio and save to file (ctrl+c to stop recording and save)
+                p : replay audio file
+                d : display the spectrogram of the audio file
+                1 : apply simple running-mean low-pass filter to audio signal
+                q or Q : quit program
+
+            ''')
+
             key = click.getchar()
             print(key)
 
@@ -55,9 +68,17 @@ class RecAUD:
                 print('* replaying clip')
                 self.replay()
 
-            if key =='d':
+            if key == 'd':
                 print('* displaying..\n\n')
                 self.display()
+
+            if key == '1':
+                print('* applying lowpass filter')
+                self.lowpass()
+
+            # if key == '2':
+            #     print('* applying highpass filter')
+            #     self.highpass()
 
 
     def start_record(self):
@@ -87,34 +108,53 @@ class RecAUD:
         self.st = 0
 
     def replay(self):
-        play=pyaudio.PyAudio()
-        stream_play=play.open(format=self.FORMAT,
-                              channels=self.CHANNELS,
-                              rate=self.RATE,
-                              output=True)
-        for data in self.frames:
-            stream_play.write(data)
-        stream_play.stop_stream()
-        stream_play.close()
-        play.terminate()
-
-    def display(self):
+        # open the file for reading.
         wf = wave.open(self.filename, 'rb')
-        frames = wf.getnframes()
-        #rate = wf.getframerate()
-        duration = frames / float(self.RATE)
+
+        # create an audio object
+        p = pyaudio.PyAudio()
+
+        # open stream based on the wave object which has been input. These are
+        # generic values so that they could technically be used for any wave object,
+        # not just the one which was recorded with this selfsame code.
+        stream = p.open(format =
+                        p.get_format_from_width(wf.getsampwidth()),
+                        channels = wf.getnchannels(),
+                        rate = wf.getframerate(),
+                        output = True)
+
+        # read data (based on the chunk size)
+        data = wf.readframes(self.CHUNK)
+
+        # play stream (looping from beginning of file to the end)
+        while data:
+            # writing to the stream is what *actually* plays the sound.
+            stream.write(data)
+            data = wf.readframes(self.CHUNK)
+
+        # cleanup stuff.
+        stream.close()
+        p.terminate()
+
+    def read_audio(self,filename):
+        wf = wave.open(self.filename, 'rb')
+        nframes = wf.getnframes()
+        duration = nframes / float(self.RATE)
         bytes_per_sample = wf.getsampwidth()
         bits_per_sample  = bytes_per_sample * 8
         dtype = 'int{0}'.format(bits_per_sample)
         audio = np.fromstring(wf.readframes(int(duration*self.RATE*bytes_per_sample/self.CHANNELS)), dtype=dtype)
-        #print(audio)
-        #plt.plot(np.arange(frames)/self.RATE,audio)
+
+        return audio,duration,nframes,bytes_per_sample,dtype
+
+    def display(self):
+        audio,duration,frames,bps,dt = self.read_audio(self.filename)
         fs = self.RATE
         audio_fft = np.fft.fft(audio)
         freqs = np.fft.fftfreq(audio.shape[0], 1.0/fs) / 1000.0
         max_freq_kHz = freqs.max()
         times = np.arange(audio.shape[0]) / float(fs)
-        fftshift = np.fft.fftshift
+        fftshift = np.fft.fftshift # function saved as variable
 
         import matplotlib.pyplot as plt
         fig = plt.figure(figsize=(8.5,11))
@@ -142,8 +182,30 @@ class RecAUD:
         plt.tight_layout()
         plt.show()
 
+    # from http://stackoverflow.com/questions/13728392/moving-average-or-running-mean
+    # This is similarly referred to a a convolution boxcar filter.
+    def running_mean(self,x,windowSize):
+        cumsum = np.cumsum(np.insert(x, 0, 0))
+        return (cumsum[windowSize:] - cumsum[:-windowSize]) / windowSize
 
+    def lowpass(self,cutOffFrequency=1000.0):
+        audio,duration,frames,bps,dt = self.read_audio(self.filename)
+        print(audio.shape)
 
+        # Get window size;
+        # from http://dsp.stackexchange.com/questions/9966/what-is-the-cut-off-frequency-of-a-moving-average-filter
+        freqRatio = (cutOffFrequency/self.RATE)
+        N = int(np.sqrt(0.196196 + freqRatio**2)/freqRatio)
+
+        # Use moving average.
+        filtered = self.running_mean(audio, N).astype(audio.dtype)
+        print(filtered.shape)
+
+        # Rewrite to file.
+        wav_file = wave.open(self.filename, "w")
+        wav_file.setparams((1, bps, self.RATE, frames, 'NONE', 'not compressed'))
+        wav_file.writeframes(filtered.tobytes('C'))
+        wav_file.close()
 
 # Create an object of the ProgramGUI class to begin the program.
 guiAUD = RecAUD()
